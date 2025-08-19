@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Half-Life: Day One</title>
+  <style>
+    html, body { margin:0; width:100%; height:100%; overflow:hidden; background:black; }
+    canvas { width:100vw; height:100vh; display:block; }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/xash3d-fwgs@latest/dist/raw.js"></script>
+  <script type="module">
+    import JSZip from 'https://cdn.skypack.dev/jszip@3.10.1';
+
+    const ZIP_PATH = 'hl/dayone.zip'; // change if your folder is named differently
+
+    async function main() {
+      try {
+        const res = await fetch(ZIP_PATH);
+        if (!res.ok) throw new Error(`Failed to load ${ZIP_PATH}: ${res.statusText}`);
+
+        const zip = await JSZip.loadAsync(await res.arrayBuffer());
+        const files = {};
+
+        await Promise.all(Object.keys(zip.files).map(async p => {
+          const file = zip.files[p];
+          if (file.dir) return;
+          files[`/rodir/${p}`] = await file.async("uint8array");
+        }));
+
+        Xash3D({
+          arguments:['-windowed'],
+          canvas: document.getElementById('canvas'),
+          ctx: document.getElementById('canvas').getContext('webgl2', {
+            alpha:false, depth:true, stencil:true, antialias:true
+          }),
+          dynamicLibraries:[
+            "filesystem_stdio.wasm",
+            "libref_gles3compat.wasm",
+            "cl_dlls/menu_emscripten_wasm32.wasm",
+            "dlls/hl_emscripten_wasm32.so",
+            "cl_dlls/client_emscripten_wasm32.wasm"
+          ],
+          onRuntimeInitialized() {
+            Object.keys(files).forEach(k => {
+              const dir = k.split('/').slice(0,-1).join('/');
+              this.FS.mkdirTree(dir);
+              this.FS.writeFile(k, files[k]);
+            });
+            this.FS.chdir('/rodir');
+          },
+          locateFile: (p) => {
+            switch(p){
+              case 'xash.wasm': return 'https://cdn.jsdelivr.net/npm/xash3d-fwgs@latest/dist/xash.wasm';
+              case 'filesystem_stdio.wasm': return 'https://cdn.jsdelivr.net/npm/xash3d-fwgs@latest/dist/filesystem_stdio.wasm';
+              case 'libref_gles3compat.wasm': return 'https://cdn.jsdelivr.net/npm/xash3d-fwgs@latest/dist/libref_gles3compat.wasm';
+              case 'cl_dlls/menu_emscripten_wasm32.wasm': return 'https://cdn.jsdelivr.net/npm/xash3d-fwgs@latest/dist/cl_dll/menu_emscripten_wasm32.wasm';
+              case 'dlls/hl_emscripten_wasm32.so': return 'https://cdn.jsdelivr.net/npm/hlsdk-portable@latest/dist/dlls/hl_emscripten_wasm32.so';
+              case 'cl_dlls/client_emscripten_wasm32.wasm': return 'https://cdn.jsdelivr.net/npm/hlsdk-portable@latest/dist/cl_dll/client_emscripten_wasm32.wasm';
+              default: return p;
+            }
+          }
+        });
+
+      } catch(err) {
+        console.error(err);
+        alert(`Error: ${err.message}`);
+      }
+    }
+
+    main();
+  </script>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+</body>
+</html>
